@@ -4,14 +4,13 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const { sql } = await req.json();
 
   if (!sql?.trim()) {
     return NextResponse.json({ error: "No SQL provided" }, { status: 400 });
   }
 
-  // Write SQL to a temp file to avoid shell escaping issues
   const tmpFile = path.join(os.tmpdir(), `sql_${Date.now()}.txt`);
   fs.writeFileSync(tmpFile, sql, "utf-8");
 
@@ -28,7 +27,7 @@ with open('${tmpFile}', 'r') as f:
 print(json.dumps(analyze(sql)))
 `;
 
-  return new Promise((resolve) => {
+  return new Promise<NextResponse>((resolve) => {
     const python = spawn("python3", ["-c", script]);
 
     let output = "";
@@ -42,7 +41,9 @@ print(json.dumps(analyze(sql)))
     });
 
     python.on("close", (code) => {
-      fs.unlinkSync(tmpFile);
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {}
       if (code !== 0) {
         resolve(NextResponse.json({ error }, { status: 500 }));
       } else {
