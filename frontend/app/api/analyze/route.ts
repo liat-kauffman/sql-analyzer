@@ -4,6 +4,20 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
+function runPython(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const python = spawn("python3", ["-c", script]);
+    let output = "";
+    let error = "";
+    python.stdout.on("data", (data: Buffer) => { output += data.toString(); });
+    python.stderr.on("data", (data: Buffer) => { error += data.toString(); });
+    python.on("close", (code: number) => {
+      if (code !== 0) reject(new Error(error));
+      else resolve(output.trim());
+    });
+  });
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const { sql } = await req.json();
 
@@ -20,35 +34,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 import sys, json
 sys.path.insert(0, '${backendPath}')
 from handler import analyze
-
 with open('${tmpFile}', 'r') as f:
     sql = f.read()
-
 print(json.dumps(analyze(sql)))
 `;
 
-  return new Promise<NextResponse>((resolve) => {
-    const python = spawn("python3", ["-c", script]);
-
-    let output = "";
-    let error = "";
-
-    python.stdout.on("data", (data) => {
-      output += data.toString();
-    });
-    python.stderr.on("data", (data) => {
-      error += data.toString();
-    });
-
-    python.on("close", (code) => {
-      try {
-        fs.unlinkSync(tmpFile);
-      } catch {}
-      if (code !== 0) {
-        resolve(NextResponse.json({ error }, { status: 500 }));
-      } else {
-        resolve(NextResponse.json(JSON.parse(output.trim())));
-      }
-    });
-  });
+  try {
+    const output = await runPython(script);
+    return NextResponse.json(JSON.parse(output));
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
 }
