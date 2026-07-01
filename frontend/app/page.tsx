@@ -34,24 +34,43 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  async function analyze() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/analyze", {
+  type Suggestion = { sql: string; explanation: string };
+
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+async function analyze() {
+  setLoading(true);
+  setError(null);
+  setSuggestions([]);
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Something went wrong");
+    setResult(data);
+
+    // fetch suggestions if there are warnings
+    if (data.warnings?.length > 0) {
+      setLoadingSuggestions(true);
+      const suggestRes = await fetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sql }),
+        body: JSON.stringify({ sql, warnings: data.warnings }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Something went wrong");
-      setResult(data);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+      const suggestData = await suggestRes.json();
+      setSuggestions(suggestData.suggestions ?? []);
+      setLoadingSuggestions(false);
     }
+  } catch (e: unknown) {
+    setError(e instanceof Error ? e.message : "Unknown error");
+  } finally {
+    setLoading(false);
   }
+}
 
   function clear() {
     setSql("");
@@ -231,10 +250,10 @@ export default function Home() {
                     result.warnings.map((w, i) => (
                       <div
                         key={i}
-                        className={`rounded-lg px-3 py-2 text-sm border-l-4 ${
+                        className={`rounded-lg px-2 py-2 text-sm border-1 ${
                           w.severity === "warning"
-                            ? "bg-yellow-50 border-yellow-400 dark:bg-yellow-950/30"
-                            : "bg-blue-50 border-blue-400 dark:bg-blue-950/30"
+                            ? "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30"
+                            : "bg-blue-50 border-blue-200 dark:bg-blue-950/30"
                         }`}
                       >
                         <p className="font-medium capitalize mb-0.5">
@@ -248,6 +267,49 @@ export default function Home() {
                 </CardContent>
               </Card>
             </div>
+            {/* Suggestions */}
+            {(loadingSuggestions || suggestions.length > 0) && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                    ✨ Suggested Rewrites
+                  </CardTitle>
+                </CardHeader>
+                <Separator />
+                <CardContent className="pt-4 flex flex-col gap-4">
+                  {loadingSuggestions ? (
+                    <p className="text-sm text-muted-foreground animate-pulse">
+                      Generating suggestions...
+                    </p>
+                  ) : (
+                    suggestions.map((s, i) => (
+                      <div key={i} className="flex flex-col gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          {s.explanation}
+                        </p>
+                        <div className="relative">
+                          <pre className="bg-muted rounded-lg p-4 text-sm overflow-x-auto font-mono">
+                            {s.sql}
+                          </pre>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="absolute top-2 right-2"
+                            onClick={() => {
+                              setSql(s.sql);
+                              setResult(null);
+                              setSuggestions([]);
+                            }}
+                          >
+                            Use this →
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </div>
