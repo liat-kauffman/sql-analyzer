@@ -56,6 +56,7 @@ def lint(sql: str) -> list[dict]:
             "severity": "info",
             "message": "HAVING is used without WHERE — if possible, filter rows with WHERE before aggregation to improve performance."
         })
+    
 
     # 6. LIKE with leading wildcard
     for like in tree.find_all(exp.Like):
@@ -149,7 +150,26 @@ def lint(sql: str) -> list[dict]:
                     "message": "Applying a function to a column in WHERE (e.g. UPPER(name) = ...) prevents index usage — consider storing data in a consistent format instead."
                 })
                 break
+ # 16. HAVING references SELECT alias (may not be supported in all DBs)
+    having = tree.find(exp.Having)
+    if having:
+        # collect aliases defined in SELECT
+        select_aliases = set()
+        for alias in tree.find_all(exp.Alias):
+            if alias.args.get("alias"):
+                select_aliases.add(str(alias.args["alias"]).lower())
 
+        # check if HAVING references any of those aliases
+        for col in having.find_all(exp.Column):
+            col_name = col.args.get("this")
+            if col_name and str(col_name).lower() in select_aliases:
+                warnings.append({
+                    "type": "having_uses_select_alias",
+                    "severity": "warning",
+                    "message": f"HAVING references '{col_name}', which is a SELECT alias. This works in MySQL but fails in PostgreSQL and standard SQL — use the full expression instead (e.g. HAVING SUM(total_amount) > 500)."
+                })
+                break
+            
     return warnings
 
 
