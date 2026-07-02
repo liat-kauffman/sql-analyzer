@@ -13,6 +13,7 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 
 type Warning = { type: string; severity: string; message: string };
 type Result = { explanation: string; warnings: Warning[]; score: number };
+type Suggestion = { sql: string; explanation: string };
 
 const EXAMPLES = [
   {
@@ -32,50 +33,46 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const { theme, setTheme } = useTheme();
-
-  type Suggestion = { sql: string; explanation: string };
-
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const { theme, setTheme } = useTheme();
 
-async function analyze() {
-  setLoading(true);
-  setError(null);
-  setSuggestions([]);
-  try {
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sql }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Something went wrong");
-    setResult(data);
-
-    // fetch suggestions if there are warnings
-    if (data.warnings?.length > 0) {
-      setLoadingSuggestions(true);
-      const suggestRes = await fetch("/api/suggest", {
+  async function analyze() {
+    setLoading(true);
+    setError(null);
+    setSuggestions([]);
+    try {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sql, warnings: data.warnings }),
+        body: JSON.stringify({ sql }),
       });
-      const suggestData = await suggestRes.json();
-      setSuggestions(suggestData.suggestions ?? []);
-      setLoadingSuggestions(false);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Something went wrong");
+      setResult(data);
+      if (data.warnings?.length > 0) {
+        setLoadingSuggestions(true);
+        const suggestRes = await fetch("/api/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sql, warnings: data.warnings }),
+        });
+        const suggestData = await suggestRes.json();
+        setSuggestions(suggestData.suggestions ?? []);
+        setLoadingSuggestions(false);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
     }
-  } catch (e: unknown) {
-    setError(e instanceof Error ? e.message : "Unknown error");
-  } finally {
-    setLoading(false);
   }
-}
 
   function clear() {
     setSql("");
     setResult(null);
     setError(null);
+    setSuggestions([]);
   }
 
   function copy() {
@@ -92,14 +89,14 @@ async function analyze() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b px-6 py-4 flex items-center justify-between">
+      <header className="border-b px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">SQL Analyzer</h1>
           <p className="text-xs text-muted-foreground">
             Explain and lint your queries instantly
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {EXAMPLES.map((ex) => (
             <Button
               key={ex.label}
@@ -109,25 +106,26 @@ async function analyze() {
                 setSql(ex.sql);
                 setResult(null);
                 setError(null);
+                setSuggestions([]);
               }}
             >
               {ex.label}
             </Button>
           ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
-        </Button>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-6">
+      <div className="max-w-5xl mx-auto px-4 py-4 sm:px-6 sm:py-8 flex flex-col gap-4 sm:gap-6">
         {/* Editor card */}
         <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardHeader className="pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Query
             </CardTitle>
@@ -142,6 +140,7 @@ async function analyze() {
                 size="sm"
                 onClick={analyze}
                 disabled={loading || !sql.trim()}
+                className="ml-auto sm:ml-0"
               >
                 {loading ? "Analyzing..." : "Analyze →"}
               </Button>
@@ -150,17 +149,18 @@ async function analyze() {
           <Separator />
           <CardContent className="p-0">
             <MonacoEditor
-              height="220px"
+              height="180px"
               language="sql"
               value={sql}
               onChange={(v) => setSql(v ?? "")}
               options={{
                 minimap: { enabled: false },
-                fontSize: 14,
+                fontSize: 13,
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
-                padding: { top: 16, bottom: 16 },
+                padding: { top: 12, bottom: 12 },
                 fontFamily: "var(--font-mono, monospace)",
+                wordWrap: "on",
               }}
             />
           </CardContent>
@@ -182,7 +182,7 @@ async function analyze() {
             <Card>
               <CardContent className="py-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                     Query score
                   </p>
                   <p className="text-3xl font-semibold">
@@ -194,7 +194,7 @@ async function analyze() {
                   </p>
                 </div>
                 <div
-                  className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold border-4 ${
+                  className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-xl sm:text-2xl font-bold border-4 ${
                     result.score >= 80
                       ? "border-green-500 text-green-500"
                       : result.score >= 50
@@ -206,8 +206,9 @@ async function analyze() {
                 </div>
               </CardContent>
             </Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Explanation */}
+
+            {/* Explanation + Warnings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
@@ -220,13 +221,12 @@ async function analyze() {
                 </CardContent>
               </Card>
 
-              {/* Warnings */}
               <Card>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                     Warnings
                   </CardTitle>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap justify-end">
                     {warningCount > 0 && (
                       <Badge variant="destructive">
                         {warningCount} warning{warningCount > 1 ? "s" : ""}
@@ -250,10 +250,10 @@ async function analyze() {
                     result.warnings.map((w, i) => (
                       <div
                         key={i}
-                        className={`rounded-lg px-2 py-2 text-sm border-1 ${
+                        className={`rounded-lg px-3 py-2 text-sm border ${
                           w.severity === "warning"
-                            ? "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30"
-                            : "bg-blue-50 border-blue-200 dark:bg-blue-950/30"
+                            ? "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-900"
+                            : "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900"
                         }`}
                       >
                         <p className="font-medium capitalize mb-0.5">
@@ -267,6 +267,7 @@ async function analyze() {
                 </CardContent>
               </Card>
             </div>
+
             {/* Suggestions */}
             {(loadingSuggestions || suggestions.length > 0) && (
               <Card>
@@ -283,25 +284,25 @@ async function analyze() {
                     </p>
                   ) : (
                     suggestions.map((s, i) => (
-                      <div key={i} className="flex flex-col gap-2">
+                      <div key={i} className="flex flex-col gap-2 mr-4">
                         <p className="text-sm text-muted-foreground">
                           {s.explanation}
                         </p>
                         <div className="relative">
-                          <pre className="bg-muted rounded-lg p-4 text-sm overflow-x-auto font-mono">
+                          <pre className="sm:pr-4 bg-muted rounded-lg p-3 sm:p-4 text-xs sm:text-sm overflow-x-auto font-mono whitespace-pre-wrap break-words">
                             {s.sql}
                           </pre>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="absolute top-2 right-2"
+                            className=""
                             onClick={() => {
                               setSql(s.sql);
                               setResult(null);
                               setSuggestions([]);
                             }}
                           >
-                            Use this →
+                            Use →
                           </Button>
                         </div>
                       </div>

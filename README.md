@@ -2,7 +2,7 @@
 
 A developer tool that instantly explains, lints, and scores SQL queries — built to help developers write better, faster SQL.
 
-**Live demo → [sqlanalyzer-ten.vercel.app](https://sqlanalyzer-ten.vercel.app)**
+**Live demo → [liat-kauffman-sql-analyzer.vercel.app](https://liat-kauffman-sql-analyzer.vercel.app)**
 
 ---
 
@@ -10,7 +10,7 @@ A developer tool that instantly explains, lints, and scores SQL queries — buil
 
 Paste any SQL query and get back:
 
-- **Plain-English explanation** — what the query actually does, in human language
+- **Plain-English explanation** — what the query actually does
 - **Performance warnings** — anti-patterns like `SELECT *`, missing `WHERE` clauses, subqueries in `WHERE`, leading wildcards, and more
 - **Query score** — a 0–100 score summarising overall query quality
 - **Severity levels** — warnings vs. informational hints, color-coded
